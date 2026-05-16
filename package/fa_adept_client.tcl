@@ -19,14 +19,15 @@ set caDir [file join [file dirname [info script]] "ca"]
 ::itcl::class AdeptClient {
 	public variable sock
 	public variable hosts [list piaware.flightaware.com piaware.flightaware.com \
-							   [list 206.253.80.196 206.253.80.197 206.253.80.198 206.253.80.199 206.253.80.200 206.253.80.201] \
-							   [list 206.253.84.193 206.253.84.194 206.253.84.195 206.253.84.196 206.253.84.197 206.253.84.198]] shuffle_hosts
+							   [list 206.253.80.202 206.253.80.203 206.253.80.204 206.253.80.205 206.253.80.206 206.253.80.207] \
+							   [list 206.253.84.200 206.253.84.201 206.253.84.202 206.253.84.203 206.253.84.204 206.253.84.205]] shuffle_hosts
 	public variable port 1200
 	public variable loginTimeoutSeconds 15
 	public variable connectRetryIntervalSeconds 60
 	public variable fastRetryIntervalSeconds 5
 	public variable showTraffic 0
 	public variable mac
+	public variable debugTLS 0
 
 	# configuration hooks for actions the client wants to trigger
 	public variable logCommand "puts stderr"
@@ -116,16 +117,23 @@ set caDir [file join [file dirname [info script]] "ca"]
 			}
 
 			info {
-				lassign $args major minor message
-				if {$major eq "alert" && $message ne "close notify"} {
-					logger "TLS alert ($minor): $message"
-				} elseif {$major eq "error"} {
-					logger "TLS error ($minor): $message"
+				set type unknown
+				lassign $args major minor message type
+				if {$debugTLS > 0 || ($major eq "alert" && $message ne "close notify")} {
+					logger "TLS $major $minor ($type): $message"
 				}
 			}
 
+			message {
+				lassign $args direction version content_type message
+                if {$debugTLS > 1} {
+                     logger "TLS message ($direction): $message"
+                 }
+
+			}
+
 			default {
-				logger "unhandled TLS callback: $cmd $channel $args"
+				# Not an error
 			}
 		}
     }
@@ -211,11 +219,13 @@ set caDir [file join [file dirname [info script]] "ca"]
 		# CA cert file to confirm the cert's signature on the certificate
 		# the server sends us
 		if {[catch {tls::import $sock \
-						-cipher ALL \
 						-cadir $::fa_adept::caDir \
-						-ssl2 0 \
-						-ssl3 0 \
-						-tls1 1 \
+						-ssl2 0	   \
+						-ssl3 0	   \
+						-tls1 0	   \
+						-tls1.1 0  \
+						-tls1.2 0  \
+						-tls1.3 1  \
 						-require 1 \
 						-command [list $this tls_callback]} catchResult] == 1} {
 			logger "TLS initialization with adept server at $host/$port failed: $catchResult"
@@ -300,7 +310,7 @@ set caDir [file join [file dirname [info script]] "ca"]
 	#  else 0
     #
     method validate_certificate_status {statusList _reason} {
-        upvar $_reason reason
+		upvar $_reason reason
 
 		array set status $statusList
 
